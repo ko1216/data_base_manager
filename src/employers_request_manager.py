@@ -7,21 +7,21 @@ class EmployersRequestManager:
     def __init__(self, filename: str):
         self.filename = filename
 
-    def read_file(self) -> list:
+    def read_file(self) -> dict[str, str]:
         """
         Метод обращается к записанному файлу, в котором указаны названия компаний и их айди на Headhunter,
-        читает строки файла и возвращает список айди всех компаний
-        :return: список айди
+        читает строки файла и возвращает словарь с названиями компаний и их айди
+        :return: словарь
         """
-        employers_ids = []
+        employers = {}
 
         with open(self.filename, encoding='utf-8') as f:
             content = f.readlines()
             for line in content:
-                employer_id = line.strip().split('=')[-1]
-                employers_ids.append(employer_id)
+                employer = line.strip().split('=')
+                employers[employer[0]] = employer[-1]
 
-        return employers_ids
+        return employers
 
     def vacancies_writer(self) -> None:
         """
@@ -30,11 +30,7 @@ class EmployersRequestManager:
         """
         self.all_vacancies.clear()
 
-        for employer_id in self.read_file():
+        for employer_id in self.read_file().values():
             vacancies = get_headhunter_request(employer_id)['items']
             self.all_vacancies.extend(vacancies)
 
-
-# emps_v = EmployersRequestManager('employers_ids')
-# emps_v.vacancies_writer()
-# print(len(emps_v.all_vacancies))

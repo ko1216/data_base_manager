@@ -10,6 +10,7 @@ packages = [{include = "data_base_manager"}]
 python = "^3.11"
 requests = "^2.31.0"
 psycopg2 = "^2.9.7"
+configparser = "^6.0.0"
 
 
 [build-system]
