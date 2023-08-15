@@ -10,6 +10,3 @@ def get_headhunter_request(url_params=None) -> dict:
     response = requests.get('https://api.hh.ru/vacancies', params=url_params)
     response_json = response.json()
     return response_json
-
-
-# print(get_headhunter_request('1060266'))
