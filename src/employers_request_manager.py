@@ -4,7 +4,7 @@ from src.request_funcs import get_headhunter_request
 class EmployersRequestManager:
     all_vacancies = []
 
-    def __init__(self, filename: str):
+    def __init__(self, filename: str) -> None:
         self.filename = filename
 
     def read_file(self) -> dict[str, str]:
@@ -31,8 +31,8 @@ class EmployersRequestManager:
         self.all_vacancies.clear()
         page = 0
         employers_ids = []
-        for id in self.read_file().values():
-            employers_ids.append(id)
+        for employer_id in self.read_file().values():
+            employers_ids.append(employer_id)
 
         params = {'text': 'python',
                   'area': '1',
@@ -45,8 +45,3 @@ class EmployersRequestManager:
         for page in range(0, 20):
             vacancies = get_headhunter_request(params)['items']
             self.all_vacancies += vacancies
-
-
-# emp = EmployersRequestManager('employers_ids')
-# emp.save_vacancies()
-# print(emp.all_vacancies)
