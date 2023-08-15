@@ -11,19 +11,35 @@ class DBConnector(ABC):
 
 
 class DBCreator(DBConnector):
+    """
+    Класс для создания БД, создания таблиц и заполнения их данными
+    """
 
     def create_database(self) -> None:
+        """
+        Метод подключается к локальной БД postgres и создает в ней БД с названием, которое передается в экземпляр каласа
+        при инициализации
+        """
         conn = psycopg2.connect(dbname='postgres', **self.params)
         conn.autocommit = True
         cur = conn.cursor()
 
-        cur.execute(f'DROP DATABASE {self.database_name}')
-        cur.execute(f'CREATE DATABASE {self.database_name}')
+        try:
+            cur.execute(f'DROP DATABASE {self.database_name}')
+        except psycopg2.Error:
+            cur.execute(f'CREATE DATABASE {self.database_name}')
+        else:
+            cur.execute(f'CREATE DATABASE {self.database_name}')
 
         cur.close()
         conn.close()
 
     def create_tables(self) -> None:
+        """
+        Метод подключается к созданной БД и спомощью sql запрсоов задает параметры для двух создаваемых таблиц:
+        employers, vacancies
+        :return:
+        """
         conn = psycopg2.connect(dbname=self.database_name, **self.params)
 
         with conn.cursor() as cur:
@@ -55,6 +71,11 @@ class DBCreator(DBConnector):
         conn.close()
 
     def insert_tables(self, employers_ids_filename) -> None:
+        """
+        Этот метод с помощью реализованного класса EmployerRequestManager парсит полученные с помощью запроса вакансии и
+        вставляет их в подготовленные поля таблиц
+        :param employers_ids_filename: путь к файлу, в котором находится первичный список с работодателями и их айди
+        """
         employers = EmployersRequestManager(employers_ids_filename)
         employers.save_vacancies()
         emp_dict = employers.read_file()
@@ -95,8 +116,16 @@ class DBCreator(DBConnector):
 
 
 class DBManager(DBConnector):
+    """
+    Класс для подключения к таблицами и фильтрации данных
+    """
 
-    def get_companies_and_vacancies_count(self) -> (list[str], dict[str, int]):
+    def get_companies_and_vacancies_count(self) -> tuple[list[str], dict[str, int]]:
+        """
+        Метод обращается к таблицам employers, vacancies и получает список всех работодателей и словарь, в котором
+        каждому работодателю присвоено числовое значение - кол-во вакансий
+        :return: tuple[list, dict]
+        """
         conn = psycopg2.connect(dbname=self.database_name, **self.params)
         company_names_list = []
         company_vacancies_amount = {}
@@ -112,13 +141,13 @@ class DBManager(DBConnector):
                 cur.execute(f'''SELECT COUNT(*) FROM vacancies WHERE company_name = '{name}';''')
                 company_vacancies_amount[name] = cur.fetchone()[0]
 
-                # for count in cur.fetchone():
-                #     for company in company_names_list:
-                #         company_vacancies_amount[company] = count
-
         return company_names_list, company_vacancies_amount
 
-    def get_all_vacancies(self):
+    def get_all_vacancies(self) -> list[tuple]:
+        """
+        Метод обращается к таблице vacancies и возвращает список всех вакансий по заданным полям
+        :return: список вакансий
+        """
         conn = psycopg2.connect(dbname=self.database_name, **self.params)
         vacancies_list = []
 
@@ -130,3 +159,90 @@ class DBManager(DBConnector):
                 vacancies_list.append(vacancy)
 
         return vacancies_list
+
+    def get_avg_salary(self) -> str:
+        """
+        Метод получает среднюю сумму заработной платы для всех вакансий всех работодателей
+        :return: str
+        """
+        conn = psycopg2.connect(dbname=self.database_name, **self.params)
+
+        with conn.cursor() as cur:
+            cur.execute('''SELECT (AVG(salary_from) + AVG(salary_to)) / 2 
+            FROM vacancies''')
+            avg_salary = round(cur.fetchone()[0], 2)
+
+        return f'Средняя зарплата всех вакнсий составляет {avg_salary} RUB'
+
+    def get_vacancies_with_higher_salary(self) -> list[tuple]:
+        """
+        Метод обращается к таблице vacancies и получает список всех вакансий, где зарплата вакансии выше средней ЗП по
+        всем вакансиям
+        :return: список вакансий
+        """
+        conn = psycopg2.connect(dbname=self.database_name, **self.params)
+        vacancies_with_higher_salary_list = []
+
+        with conn.cursor() as cur:
+            cur.execute('''SELECT vacancies_name, company_name, salary_from, salary_to, url 
+                        FROM vacancies
+                        WHERE (salary_from + salary_to) / 2 > (SELECT (AVG(salary_from) + AVG(salary_to)) / 2 
+                        FROM vacancies);''')
+
+            for vacancy in cur.fetchall():
+                vacancies_with_higher_salary_list.append(vacancy)
+
+        return vacancies_with_higher_salary_list
+
+    def get_vacancies_with_keyword(self, keyword: str) -> list:
+        """
+        Метод по ключевому слову ищет в таблице vacancies по столбцам(полям) vacancies_name, requirement подходящие
+        вакансии
+        :param keyword: str
+        :return: список вакансий
+        """
+        conn = psycopg2.connect(dbname=self.database_name, **self.params)
+        vacancies_with_keyword_list = []
+
+        with conn.cursor() as cur:
+            cur.execute(f'''SELECT vacancies_name, company_name, salary_from, salary_to, url
+                            FROM vacancies
+                            WHERE LOWER(vacancies_name) LIKE '%{keyword}%' OR LOWER(requirement) LIKE '%{keyword}%';''')
+
+            for vacancy in cur.fetchall():
+                vacancies_with_keyword_list.append(vacancy)
+
+        return vacancies_with_keyword_list
+
+    @staticmethod
+    def get_results_vacancies(vacancies_list: list, codeword: str):
+        if len(vacancies_list) == 0:
+            print('Нет вакансий соответствуйющих вашему запросу')
+        else:
+            if codeword == 'all':
+                print('''\n Ниже представлены все вакансии из таблицы vacancies в формате:
+Название вакансии
+Название компании
+Зарплата от (если указана)
+Зарплата до (если указана)
+Ссылка на вакансию''')
+            elif codeword == 'higher_salary':
+                print('''\n Ниже представлены вакансии из таблицы vacancies, зарплата которых выше средней ЗП всех вакансий в 
+таблице:
+Название вакансии
+Название компании
+Зарплата от (если указана)
+Зарплата до (если указана)
+Ссылка на вакансию''')
+            elif codeword == 'keyword':
+                print('''\n Ниже представлены вакансии из таблицы vacancies, в которых нашлось соответствие ключевому слову:
+Название вакансии
+Название компании
+Зарплата от (если указана)
+Зарплата до (если указана)
+Ссылка на вакансию''')
+
+            for vacancy in vacancies_list:
+                print('')
+                for vacancies_character in vacancy:
+                    print(vacancies_character)
